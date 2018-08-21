@@ -52,8 +52,8 @@ class MissingImputer(BaseEstimator, TransformerMixin):
 				else:
 					imputed_ini[:, i:i+1] = self.imputer_reg.fit_transform(X[:, i].reshape(-1,1))
 
-		print('fit:imputed_ini')
-		print(imputed_ini)
+		#print('fit:imputed_ini')
+		#print(imputed_ini)
 		#将有缺失值的特征，按缺失值个数来先后预测
 		X_nan = np.isnan(X)
 		num_nan_desc = X_nan.sum(axis=0).argsort()[::-1]
@@ -98,6 +98,8 @@ class MissingImputer(BaseEstimator, TransformerMixin):
 			self.estimators_ = [KNeighborsClassifier(**model_params['classifier']) if self.with_cat and i in self.scat_index else KNeighborsRegressor(**model_params['regressor']) for i in np.arange(X.shape[1])]
 
 		#获取各列缺失值的bool值
+		self.iter_ = 0
+		self.estimators_ = self.estimators_ * self.max_iter
 		for iter in np.arange(self.max_iter):
 			for i in num_nan_desc:
 				i_nan_index = X_nan[:, i]
@@ -110,9 +112,11 @@ class MissingImputer(BaseEstimator, TransformerMixin):
 				y_train = imputed_X[~i_nan_index, i]
 
 				X_pre = X_1[i_nan_index]
-				self.estimators_[i].fit(X_train, y_train)
+				self.estimators_[iter*X.shape[1]+i].fit(X_train, y_train)
 
-				imputed_X[i_nan_index, i] = self.estimators_[i].predict(X_pre)
+				imputed_X[i_nan_index, i] = self.estimators_[iter*X.shape[1]+i].predict(X_pre)
+
+			self.iter_ += 1
 
 			gamma = ((imputed_X-imputed_ini)**2/(1e-6+imputed_X.var(axis=0))).sum()/(1e-6+X_nan.sum())
 			self.gamma_.append(gamma)
@@ -139,20 +143,21 @@ class MissingImputer(BaseEstimator, TransformerMixin):
 				else:
 					imputed_ini[:, i:i+1] = self.imputer_reg.fit_transform(X[:, i].reshape(-1,1))
 
-		print('transform:imputed_ini')
-		print(imputed_ini)
+		#print('transform:imputed_ini')
+		#print(imputed_ini)
 		X_nan = np.isnan(X)
 		num_nan_desc = X_nan.sum(axis=0).argsort()[::-1]
 
-		for i in num_nan_desc:
-			i_nan_index = X_nan[:, i]
-			if np.sum(i_nan_index) == 0:
-				break
+		for iter in np.arange(self.iter_):
+			for i in num_nan_desc:
+				i_nan_index = X_nan[:, i]
+				if np.sum(i_nan_index) == 0:
+					break
 
-			X_1 = np.delete(imputed_ini, i, 1)
-			X_pre = X_1[i_nan_index]
-			
-			imputed_ini[i_nan_index, i] = self.estimators_[i].predict(X_pre)
+				X_1 = np.delete(imputed_ini, i, 1)
+				X_pre = X_1[i_nan_index]
+
+				imputed_ini[i_nan_index, i] = self.estimators_[iter*X.shape[1]+i].predict(X_pre)
 
 
 		'''for i, estimators in enumerate(self.estimators_):
